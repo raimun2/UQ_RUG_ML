@@ -1,0 +1,121 @@
+#--
+#
+#  Clase 4: Analisis de modelos supervisados
+#  Profesor Raimundo Sanchez, PhD
+#
+#  El objetivo de esta sesion es implementar algunos algoritmos predictivos en R
+#
+#--
+
+# cargo varias librerias a la vez con el package manager (pacman) * pacman es una libreria y debe instalarla como cualquier otra
+pacman::p_load(tidyverse, janitor, tidymodels, discrim)
+set.seed(42)
+# define funciones de tidymodels por defecto
+tidymodels_prefer()
+
+#cargo las ventas de videojuegos
+ventas_raw = read.csv("https://dl.dropbox.com/s/q9t878htbqbhidc/video_games_sales.csv?dl=1")
+
+# limpio los nombres con janitor y genero la variable top_critic, donde es TRUE si el critic score es sobre 80
+ventas = ventas_raw |> 
+  clean_names() |> 
+  mutate(user_score = as.numeric(user_score),
+         name = as.factor(name),
+         platform = as.factor(platform),
+         genre = as.factor(genre),
+         publisher = as.factor(publisher),
+         developer = as.factor(developer),
+         rating = as.factor(rating),
+         year_of_release = as.numeric(year_of_release),
+         top_critic = factor(critic_score > 80)) |> 
+  drop_na()
+
+# division datos
+data_split = initial_split(ventas, prop = 3/4, strata = top_critic)
+train_data = training(data_split)
+test_data  = testing(data_split)
+
+
+## como crear un modelo con R y Tidymodels
+# se necesita primero una 'receta', o modelo que relacione una variable dependiente con las variables independientes
+receta = 
+  recipe(top_critic ~ na_sales + eu_sales + jp_sales + other_sales + user_score + genre, data = data_split) %>% 
+  step_dummy(genre) %>% 
+  step_zv(all_predictors())
+
+# Especificamos modelo, en este caso regresion logistica
+model = logistic_reg() %>% 
+  set_mode("classification") %>% 
+  set_engine("glm")
+
+# Definimos el numero de pliegues para cross validation
+cv_folds = 
+  vfold_cv(data = train_data, v = 5) 
+
+# ajustamos el primer modelo
+modelo_fit = 
+  workflow() %>% 
+  add_model(model) %>% 
+  add_recipe(receta) %>% 
+  fit_resamples(resamples = cv_folds)
+
+# exploramos las metricas del aprendizaje
+collect_metrics(modelo_fit)
+
+
+# k-nearest neighbors
+# solo ajustamos el modelo, la receta es la misma
+model_knn =
+  nearest_neighbor(neighbors = 5, weight_func = "triangular") %>%
+  set_mode("classification") %>%
+  set_engine("kknn")
+
+# ajustamos el nuevo modelo
+knn_fit = 
+  workflow() %>% 
+  add_model(model_knn) %>% 
+  add_recipe(receta) %>% 
+  fit_resamples(resamples = cv_folds)
+
+collect_metrics(knn_fit)
+
+# naive bayes
+model_nb = naive_Bayes() %>% 
+  set_mode("classification") %>% 
+  set_engine("klaR")
+
+bayes_fit = 
+  workflow() %>% 
+  add_model(model_nb) %>% 
+  add_recipe(receta) %>% 
+  fit_resamples(resamples = cv_folds)
+
+collect_metrics(bayes_fit)
+
+# decision trees
+model_trees <-
+  decision_tree(tree_depth = 10, min_n = 5) %>% 
+  set_engine("rpart") %>% 
+  set_mode("classification")
+
+trees_fit = 
+  workflow() %>% 
+  add_model(model_trees) %>% 
+  add_recipe(receta) %>% 
+  fit_resamples(resamples = cv_folds)
+
+collect_metrics(trees_fit)
+
+## modelo singular
+trees_fit2 = 
+  workflow() %>% 
+  add_model(model_trees) %>% 
+  add_recipe(receta) %>% 
+  fit(data=train_data)
+
+# genero columnas con las predicciones de los modelos
+data_estimate = augment(trees_fit2, new_data = test_data)
+
+# calculo las metricas de evaluacion
+accuracy(data_estimate, top_critic, .pred_class)
+roc_auc(data_estimate, top_critic, .pred_FALSE)

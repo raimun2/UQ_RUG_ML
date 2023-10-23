@@ -1,0 +1,375 @@
+---
+title: "Supervised Machine Learning with Tidymodels in R"
+author: Raimundo Sanchez, PhD
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = TRUE) 
+
+
+```
+
+## Section 1: Introduction to Machine Learning
+
+Machine learning is a dynamic field that empowers us to model intricate relationships within data, enabling predictions and decisions without explicit programming. Its applications span a wide range of domains, from healthcare to finance and even self-driving cars.
+
+Machine learning models primarily seek to uncover meaningful patterns within a set of input features or characteristics $\vec{x}$, ultimately aiming to predict or understand an output variable $y$. This connection is established through the application of a mathematical function, encapsulating the intricate relationships inherent in the data:
+
+$$ y = f(\overrightarrow{x}) $$
+
+![](https://hub.packtpub.com/wp-content/uploads/2019/12/human-learning-1024x291.png)
+
+In most cases, machine learning models operate most effectively when the input data is in numeric format. Consequently, non-numeric data often requires encoding or transformation to facilitate processing by machine learning algorithms. This transformation is a critical preprocessing step, ensuring seamless operation and the extraction of valuable insights from the data.
+
+### The "Black-Box" Perspective
+
+Machine learning models exhibit significant diversity, leading to what's often termed a "black-box" approach to understanding complex relationships within data. These "black-box" models are remarkably flexible and adept at capturing intricate, non-linear relationships in the data. While excelling in predictive power, they may lack transparency, making it challenging to comprehend and explain the inner workings of the model.
+
+It's important to understand that the patterns these models identify are established numerically, and their presence doesn't necessarily imply causation. Instead, they reveal associations and correlations within the data. Therefore, it's essential to exercise caution when attributing causation solely based on these observed patterns.
+
+This trade-off between predictive performance and interpretability is a common consideration when choosing a machine learning algorithm for a specific problem. Depending on the application, one might opt for more interpretable models or employ techniques to gain insights into complex relationships, even within the "black-box" models.
+
+![](https://vitalflux.com/wp-content/uploads/2022/05/model-complexity-vs-model-overfitting-vs-model-accuracy-640x430.png)
+
+### Model Complexity and Overfitting
+
+Machine learning models often come equipped with numerous parameters, offering the flexibility to capture intricate data relationships. However, this can lead to a common challenge in machine learning known as overfitting. Overfitting occurs when a model becomes excessively tailored to the training data, capturing noise and fluctuations rather than genuine underlying patterns. Consequently, when exposed to new data, the model's performance may deteriorate.
+
+Conversely, overly simplistic models may underfit the training data, failing to capture critical patterns. Striking the right balance between model complexity and generalization is a fundamental aspect of machine learning model selection and training.
+
+### Significance of Sampling Techniques
+
+Sampling techniques are crucial in machine learning for several reasons. They help address issues related to dataset size, class imbalance, and model generalization. Sampling methods can significantly impact the performance and accuracy of your machine learning models. In this section, we'll explore the significance of various sampling techniques and how they can be used to improve the quality of your models.
+
+## Cross-Validation
+
+Cross-validation is a critical technique for estimating the performance of a machine learning model on unseen data. It helps in evaluating the model's ability to generalize to new data, which is vital for assessing its predictive power. We'll provide a clear explanation of the concept of cross-validation, its different forms (e.g., k-fold cross-validation), and how it mitigates the risk of overfitting.
+
+
+## Types of Machine Learning
+
+Machine learning algorithms are categorized based on the relationship they aim to model between input and output data. These categories encompass various learning tasks designed for specific problem types and objectives.
+
+### Supervised Learning
+
+In supervised learning, the algorithm learns from a labeled dataset, pairing input data ($\vec{x}$) with corresponding output data ($y$). The primary tasks in supervised learning include:
+
+-   **Classification**: Models classify input data into predefined categories or classes, such as categorizing emails as spam or not spam.
+-   **Regression**: Models predict continuous numeric values, like house prices based on features such as square footage and location.
+
+### Unsupervised Learning
+
+Unsupervised learning algorithms operate with unlabeled data, aiming to uncover patterns, structures, or relationships within the input data. Key tasks include:
+
+-   **Clustering**: Clustering algorithms group similar data points based on shared characteristics, often used in customer segmentation and image segmentation.
+-   **Dimensionality Reduction**: These methods reduce input features while preserving vital information, with Principal Component Analysis (PCA) as a common example.
+
+![](https://www.mathworks.com/help/stats/machinelearningtypes.jpg)
+
+## Section 2: Introduction to Tidymodels Package
+
+The **Tidymodels** package is a powerful and user-friendly framework for performing supervised machine learning tasks in the R programming language. It is designed to provide a consistent and tidy approach to building, tuning, and evaluating machine learning models. Tidymodels embraces the principles of the Tidyverse, making it a seamless extension of the R ecosystem for data science and analysis.
+
+With Tidymodels, you can create, train, and evaluate machine learning models while adhering to the principles of reproducibility, consistency, and clarity. It offers a structured and organized workflow, making it easier for data scientists and analysts to understand and communicate their modeling process. Tidymodels is particularly useful for tasks such as classification, regression, and feature engineering.
+
+## Tidymodels with NYC Flights Data
+
+Tidymodels frequently employs the `nycflights13` dataset, a thoughtfully curated dataset consisting of records from 325,819 flights that departed from locations near New York City in the year 2013.
+
+Our primary task involves using the predicttion whether an aircraft will experience a delay of more than 30 minutes upon arrival. This prediction will be based on a comprehensive set of data attributes, including flight dates, times, carrier information, origin and destination details, delays, distances, and more.
+
+```{r}
+library(nycflights13)
+library(tidyverse)
+#data preparation
+
+
+flight_data <- 
+  flights %>% 
+  mutate(
+    # Convert the arrival delay to a factor
+    arr_delay = ifelse(arr_delay >= 30, "late", "on_time"),
+    arr_delay = factor(arr_delay),
+    # We will use the date (not date-time) in the recipe below
+    date = lubridate::as_date(time_hour)
+  ) %>% 
+  # Include the weather data
+  inner_join(weather, by = c("origin", "time_hour")) %>% 
+  # Only retain the specific columns we will use
+  select(dep_time, flight, origin, dest, air_time, distance, 
+         carrier, date, arr_delay, time_hour) %>% 
+  # Exclude missing data
+  na.omit() %>% 
+  # For creating models, it is better to have qualitative columns
+  # encoded as factors (instead of character strings)
+  mutate_if(is.character, as.factor)  %>% 
+  sample_n(10000)
+
+flight_data %>% 
+  count(arr_delay) %>% 
+  mutate(prop = n/sum(n))
+
+
+```
+
+
+
+### Key Components of Tidymodels
+
+Tidymodels consists of several key components, including:
+
+
+- **Data Sampling**: Tidymodels offers a range of methods for resampling your data, including cross-validation, bootstrapping, and more, to assess model performance effectively.
+
+```{r}
+library(tidymodels)
+
+data_split <- initial_split(flight_data, prop = 3/4)
+
+# Create data frames for the two sets:
+train_data <- training(data_split)
+test_data  <- testing(data_split)
+
+
+cv <- vfold_cv(train_data, v = 5)
+
+
+```
+
+
+
+
+- **Recipes**: These are used for data preprocessing and feature engineering, allowing you to define the steps needed to prepare your data for modeling.
+
+```{r}
+
+
+flights_rec <- 
+  recipe(arr_delay ~ ., data = train_data) %>% 
+  update_role(flight, time_hour, new_role = "ID") %>% 
+  step_date(date, features = c("dow", "month")) %>%               
+  step_holiday(date, 
+               holidays = timeDate::listHolidays("US"), 
+               keep_original_cols = FALSE) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors())
+
+
+
+```
+
+
+
+## Overview of ML algorithms in tidymodels
+
+While Tidymodels is a powerful framework, it's worth noting that R has a rich ecosystem of other machine learning libraries. Some of these libraries include:
+
+- **Caret**: Caret is a comprehensive package for machine learning in R. It provides a unified interface to various modeling techniques, making it suitable for beginners and experts alike.
+
+```{r}
+
+
+
+
+```
+
+
+- **XGBoost**: XGBoost is an efficient and scalable gradient boosting library in R. It is well-known for its exceptional predictive performance and is widely used in machine learning competitions.
+
+```{r}
+
+```
+
+
+- **RandomForest**: The RandomForest package provides an implementation of the Random Forest algorithm, which is a popular ensemble learning method.
+
+```{r}
+
+rand_forest(mode = "classification", trees = 2000)
+
+
+show_engines("rand_forest")
+
+
+```
+
+
+- **glmnet**: The glmnet package is used for fitting generalized linear models with lasso or elastic-net regularization, which is especially useful for variable selection.
+
+```{r}
+
+```
+
+
+- **Keras and TensorFlow**: For deep learning tasks, R offers interfaces to the Keras and TensorFlow libraries, allowing you to build and train neural networks.
+
+```{r}
+
+```
+
+
+Each of these libraries has its strengths and applications, and the choice of which library to use often depends on the specific requirements of your machine learning project.
+
+
+- **Model Specifications**: Tidymodels provides a variety of machine learning algorithms to choose from, and you can specify them using consistent syntax.
+
+```{r}
+
+model <- decision_tree(tree_depth = 10, min_n = 5) %>%
+  set_mode("classification") %>%
+  set_engine("rpart")
+
+
+# ? logistic_reg()
+# 
+# decision_tree()
+# 
+# naive_Bayes()
+# 
+# mlp()
+# 
+# rand_forest()
+# 
+# nearest_neighbor()
+# 
+# svm_poly()
+
+
+```
+
+
+
+- **Workflows**: Workflows in Tidymodels bring together the recipe and the model specification into a single coherent structure, streamlining the modeling process.
+
+```{r}
+# workflow <- workflow() %>%
+#   add_recipe(flights_rec) %>%
+#   add_model(model)
+# 
+# flights_fit <- 
+#   workflow %>% 
+#   fit(data = train_data)
+# 
+# flights_cv <- 
+#   workflow  %>% 
+#   fit_resamples(cv)
+
+```
+
+
+- **Metrics**: You can easily calculate and compare model performance metrics to evaluate the quality of your models.
+
+```{r}
+
+ # flights_fit %>% 
+ #  augment(test_data) %>%
+ #  roc_curve(truth = arr_delay, .pred_late) %>% 
+ #  autoplot()
+ # 
+ # flights_fit %>% 
+ #  augment(test_data) %>% 
+ #  roc_auc(truth = arr_delay, .pred_late)
+ # 
+ # flights_cv %>% 
+ #   collect_metrics()
+
+```
+
+
+- **Hyperparameter Tuning**: Tidymodels supports hyperparameter tuning, allowing you to optimize model performance.
+
+
+```{r}
+# tune_spec <- 
+#   decision_tree(
+#     cost_complexity = tune(),
+#     tree_depth = tune()
+#   ) %>% 
+#   set_engine("rpart") %>% 
+#   set_mode("classification")
+# 
+# tree_grid <- grid_regular(cost_complexity(),
+#                           tree_depth(),
+#                           levels = 5)
+# 
+# tree_wf <- workflow() %>%
+#   add_model(tune_spec) %>%
+#   add_recipe(flights_rec)
+# 
+# tree_res <- 
+#   tree_wf %>% 
+#   tune_grid(
+#     resamples = cv,
+#     grid = tree_grid
+#     )
+# 
+# tree_res %>% 
+#   collect_metrics()
+# 
+# best_tree <- tree_res %>%
+#   select_best("accuracy")
+# 
+# final_wf <- 
+#   tree_wf %>% 
+#   finalize_workflow(best_tree)
+# 
+#   
+# final_fit <- 
+#   final_wf %>%
+#   fit(data = train_data) 
+
+
+```
+
+
+
+
+Thank you for joining the workshop!
+
+
+
+## Annex: Data Overview - NYC Flights Dataset 
+
+### Introduction to the NYC Flights Dataset
+
+The NYC Flights dataset is a widely used dataset in the field of data science and machine learning. It contains detailed information about domestic flights departing from New York City in 2013. This dataset is an excellent resource for exploring and understanding various aspects of data analysis, feature engineering, and predictive modeling.
+
+The dataset provides a rich source of information, including flight departure and arrival times, carrier details, origin and destination airports, flight distance, and more. The wealth of data makes it suitable for a wide range of practical machine learning problems.
+
+### Relevance for Practical ML Problems
+
+The NYC Flights dataset is relevant to a variety of practical machine learning problems, making it a valuable resource for learning and experimentation. Some of the ways in which this dataset can be applied to real-world problems include:
+
+- **Flight Delay Prediction**: You can use this dataset to develop machine learning models for predicting flight delays. These models can be beneficial for both travelers and airlines, helping to improve planning and operations.
+
+- **Airport Operations Optimization**: Analyzing the dataset can provide insights into airport operations, including identifying bottlenecks and areas for improvement in managing flight schedules.
+
+- **Route Planning**: Airlines can benefit from machine learning models that optimize route planning, taking into account historical data from the dataset.
+
+- **Weather Impact Analysis**: Understanding how weather conditions affect flight delays and disruptions is crucial. This dataset can be used for predicting the impact of weather on flight schedules.
+
+- **Customer Satisfaction and Retention**: By analyzing flight data, airlines can improve customer satisfaction and retention by addressing issues that lead to delays or inconveniences.
+
+### Quick Exploration of the Dataset
+
+Let's perform a quick exploration of the NYC Flights dataset to get an initial understanding of its structure and contents. We will examine some sample rows and review the available features to see what insights we can gain.
+
+```{r}
+
+# Load required packages and data
+
+# data("flights")
+# head()
+# 
+# data("airlines")
+# data("airports")
+# 
+# data("planes")
+# data("weather")
+
+```
+
